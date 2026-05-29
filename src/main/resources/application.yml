@@ -11,7 +11,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/health_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowMultiQueries=true
     username: root
-    password: 123456
+    password: ${DB_PASSWORD:}
 
   # Jackson 日期格式
   jackson:
@@ -38,7 +38,7 @@ mybatis-plus:
 
 # JWT 配置
 jwt:
-  secret: YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcA==
+  secret: ${JWT_SECRET:}
   # 过期时间：7 天（毫秒）
   expiration: 604800000
 
