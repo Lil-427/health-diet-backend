@@ -1,10 +1,14 @@
 package com.health.service.impl;
 
 import com.health.entity.FoodRecord;
+import com.health.entity.User;
 import com.health.mapper.FoodRecordMapper;
+import com.health.mapper.UserMapper;
 import com.health.service.StatsService;
+import com.health.utils.NutritionCalculator;
 import com.health.vo.CalorieTrendVO;
 import com.health.vo.NutrientRatioVO;
+import com.health.vo.NutritionSummaryVO;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -28,9 +32,11 @@ public class StatsServiceImpl implements StatsService {
     private static final int FAT_CAL = 9;
 
     private final FoodRecordMapper foodRecordMapper;
+    private final UserMapper userMapper;
 
-    public StatsServiceImpl(FoodRecordMapper foodRecordMapper) {
+    public StatsServiceImpl(FoodRecordMapper foodRecordMapper, UserMapper userMapper) {
         this.foodRecordMapper = foodRecordMapper;
+        this.userMapper = userMapper;
     }
 
     @Override
@@ -69,7 +75,8 @@ public class StatsServiceImpl implements StatsService {
         CalorieTrendVO vo = new CalorieTrendVO();
         vo.setDays(days);
         vo.setValues(values);
-        vo.setTarget(0); // 由前端根据用户信息动态计算
+        User user = userMapper.selectById(userId);
+        vo.setTarget(NutritionCalculator.calcTargetCalories(user));
         vo.setAvgCal(avgCal);
         vo.setTrend(trend);
         return vo;
@@ -97,16 +104,26 @@ public class StatsServiceImpl implements StatsService {
     public NutrientRatioVO getNutrientRatio(Long userId, LocalDate date) {
         // 查询当天的所有记录
         List<FoodRecord> records = foodRecordMapper.getRecordsByDate(userId, date);
+        return buildNutrientRatio(records);
+    }
 
-        // 计算各类营养素总克数
-        double totalProtein = 0, totalCarbs = 0, totalFat = 0;
-        for (FoodRecord r : records) {
-            totalProtein += Optional.ofNullable(r.getProtein()).orElse(0.0);
-            totalCarbs += Optional.ofNullable(r.getCarbs()).orElse(0.0);
-            totalFat += Optional.ofNullable(r.getFat()).orElse(0.0);
-        }
+    @Override
+    public NutrientRatioVO getNutrientRatio(Long userId, int range) {
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = today.minusDays(range - 1);
+        List<FoodRecord> records = foodRecordMapper.getRecordsByDateRange(userId, startDate, today);
+        return buildNutrientRatio(records);
+    }
 
-        // 计算各类热量
+    /**
+     * 从记录列表中构建营养素占比 VO
+     */
+    private NutrientRatioVO buildNutrientRatio(List<FoodRecord> records) {
+        NutritionSummaryVO summary = NutritionCalculator.calculateSummary(records);
+        double totalProtein = summary.getTotalProtein();
+        double totalCarbs = summary.getTotalCarbs();
+        double totalFat = summary.getTotalFat();
+
         int proteinCal = (int) Math.round(totalProtein * PROTEIN_CAL);
         int carbsCal = (int) Math.round(totalCarbs * CARBS_CAL);
         int fatCal = (int) Math.round(totalFat * FAT_CAL);

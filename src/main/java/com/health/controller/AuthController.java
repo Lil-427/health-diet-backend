@@ -52,10 +52,7 @@ public class AuthController {
         }
 
         // 检查用户名是否已存在
-        User existingUser = userService.lambdaQuery()
-                .eq(User::getUsername, username)
-                .one();
-        if (existingUser != null) {
+        if (userService.existsByUsername(username)) {
             return Result.error("用户名已存在");
         }
 
@@ -81,9 +78,7 @@ public class AuthController {
     @ApiOperation("用户登录")
     public Result<LoginResponse> login(@Validated @RequestBody LoginRequest request) {
         // 根据用户名查询用户
-        User user = userService.lambdaQuery()
-                .eq(User::getUsername, request.getUsername())
-                .one();
+        User user = userService.findByUsername(request.getUsername());
 
         if (user == null) {
             throw new UsernameNotFoundException("用户不存在");

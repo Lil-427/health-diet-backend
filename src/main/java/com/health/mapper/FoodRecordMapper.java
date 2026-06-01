@@ -36,6 +36,14 @@ public interface FoodRecordMapper extends BaseMapper<FoodRecord> {
                                       @Param("recordDate") LocalDate recordDate);
 
     /**
+     * 查询日期范围内所有饮食记录
+     */
+    @Select("SELECT * FROM food_record WHERE user_id = #{userId} AND record_date BETWEEN #{startDate} AND #{endDate} ORDER BY record_date, create_time ASC")
+    List<FoodRecord> getRecordsByDateRange(@Param("userId") Long userId,
+                                           @Param("startDate") LocalDate startDate,
+                                           @Param("endDate") LocalDate endDate);
+
+    /**
      * 查询某天营养汇总
      */
     @Select("SELECT " +

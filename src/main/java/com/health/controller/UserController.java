@@ -134,4 +134,18 @@ public class UserController {
         String avatarUrl = userService.uploadAvatarBase64(userId, base64, filename);
         return Result.success("上传成功", avatarUrl);
     }
+
+    /**
+     * 注销账号
+     */
+    @DeleteMapping("/account")
+    @ApiOperation("注销账号")
+    public Result<Void> deleteAccount(HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            return Result.unauthorized("未认证，请先登录");
+        }
+        userService.deleteAccount(userId);
+        return Result.success("账号已注销", null);
+    }
 }

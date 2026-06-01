@@ -25,8 +25,8 @@ mybatis-plus:
   configuration:
     # 下划线转驼峰
     map-underscore-to-camel-case: true
-    # SQL 日志输出
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # SQL 日志输出（仅在 dev 环境启用，生产部署时注释掉）
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   global-config:
     db-config:
       # 逻辑删除字段名
@@ -58,3 +58,5 @@ deepseek:
   api-key: ${DEEPSEEK_API_KEY:}
   model: deepseek-chat
   url: https://api.deepseek.com/chat/completions
+  max-tokens: 2000
+  temperature: 0.7

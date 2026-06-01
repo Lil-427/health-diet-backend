@@ -61,21 +61,22 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 处理通用运行时异常
+     * 处理通用运行时异常（记录日志，返回通用错误信息）
      */
     @ExceptionHandler(RuntimeException.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleRuntimeException(RuntimeException e) {
-        return Result.error("服务器内部错误: " + e.getMessage());
+        log.error("运行时异常", e);
+        return Result.error("服务器内部错误，请稍后重试");
     }
 
     /**
-     * 处理所有未捕获的异常
+     * 处理所有未捕获的异常（记录日志，返回通用错误信息）
      */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleException(Exception e) {
         log.error("未捕获异常", e);
-        return Result.error("服务器内部错误: " + e.getMessage());
+        return Result.error("服务器内部错误，请稍后重试");
     }
 }

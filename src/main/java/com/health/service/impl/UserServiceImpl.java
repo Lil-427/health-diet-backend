@@ -105,14 +105,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             Path targetPath = Paths.get(avatarPath, newFilename);
             file.transferTo(targetPath.toFile());
 
-            // 保存头像 URL 到用户记录
-            String avatarUrl = "/uploads/avatars/" + newFilename;
+            // 删除旧头像文件
             User user = getById(userId);
             if (user != null) {
+                deleteOldAvatarFile(user.getAvatar());
+                String avatarUrl = "/uploads/avatars/" + newFilename;
                 user.setAvatar(avatarUrl);
                 updateById(user);
             }
-            return avatarUrl;
+            return "/uploads/avatars/" + newFilename;
         } catch (IOException e) {
             throw new BusinessException("头像上传失败: " + e.getMessage());
         }
@@ -120,6 +121,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public String uploadAvatarBase64(Long userId, String base64Data, String filename) {
+        // 限制 Base64 数据大小（解码前约 5MB，对应原始图片约 3.5MB）
+        if (base64Data.length() > 7 * 1024 * 1024) {
+            throw new BusinessException("头像文件过大，请选择小于 5MB 的图片");
+        }
         try {
             // 去掉 data:image/xxx;base64, 前缀
             String pureBase64 = base64Data;
@@ -127,6 +132,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 pureBase64 = base64Data.substring(base64Data.indexOf(",") + 1);
             }
             byte[] bytes = Base64.getDecoder().decode(pureBase64);
+            if (bytes.length > 5 * 1024 * 1024) {
+                throw new BusinessException("头像文件过大，请选择小于 5MB 的图片");
+            }
 
             // 确定后缀
             String suffix = ".png";
@@ -147,15 +155,47 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             Path targetPath = Paths.get(avatarPath, newFilename);
             Files.write(targetPath, bytes);
 
-            String avatarUrl = "/uploads/avatars/" + newFilename;
             User user = getById(userId);
             if (user != null) {
+                deleteOldAvatarFile(user.getAvatar());
+                String avatarUrl = "/uploads/avatars/" + newFilename;
                 user.setAvatar(avatarUrl);
                 updateById(user);
             }
-            return avatarUrl;
+            return "/uploads/avatars/" + newFilename;
         } catch (IOException e) {
             throw new BusinessException("头像上传失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public User findByUsername(String username) {
+        return lambdaQuery().eq(User::getUsername, username).one();
+    }
+
+    @Override
+    public boolean existsByUsername(String username) {
+        return lambdaQuery().eq(User::getUsername, username).count() > 0;
+    }
+
+    @Override
+    public void deleteAccount(Long userId) {
+        User user = getById(userId);
+        if (user == null) throw new BusinessException("用户不存在");
+        // 删除旧头像文件
+        deleteOldAvatarFile(user.getAvatar());
+        // MyBatis-Plus 逻辑删除标记
+        removeById(userId);
+    }
+
+    private void deleteOldAvatarFile(String avatarUrl) {
+        if (avatarUrl == null || avatarUrl.isEmpty()) return;
+        try {
+            String filename = avatarUrl.substring(avatarUrl.lastIndexOf("/") + 1);
+            Path oldFile = Paths.get(avatarPath, filename);
+            Files.deleteIfExists(oldFile);
+        } catch (IOException ignored) {
+            // 删除失败不影响新文件上传
         }
     }
 }

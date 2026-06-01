@@ -48,25 +48,32 @@ public class StatsController {
     }
 
     /**
-     * 营养素热量占比（支持指定日期，不传默认为今天）
+     * 营养素热量占比（支持指定日期或天数范围）
      *
-     * @param date 查询日期
+     * @param date  查询日期（不传默认为今天）
+     * @param range 天数范围（7/30/90），优先于 date
      */
     @GetMapping("/nutrient-ratio")
     @ApiOperation("营养素热量占比")
     public Result<NutrientRatioVO> nutrientRatio(HttpServletRequest request,
                                                   @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-                                                  @ApiParam(value = "查询日期", example = "2026-05-25") LocalDate date) {
+                                                  @ApiParam(value = "查询日期", example = "2026-05-25") LocalDate date,
+                                                  @RequestParam(required = false, defaultValue = "0")
+                                                  @ApiParam(value = "天数范围", example = "7") int range) {
         Long userId = (Long) request.getAttribute("userId");
         if (userId == null) {
             return Result.unauthorized("未认证，请先登录");
         }
 
-        if (date == null) {
-            date = LocalDate.now();
+        NutrientRatioVO vo;
+        if (range > 0) {
+            vo = statsService.getNutrientRatio(userId, range);
+        } else {
+            if (date == null) {
+                date = LocalDate.now();
+            }
+            vo = statsService.getNutrientRatio(userId, date);
         }
-
-        NutrientRatioVO vo = statsService.getNutrientRatio(userId, date);
         return Result.success(vo);
     }
 }

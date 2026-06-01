@@ -2,6 +2,7 @@ package com.health.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.health.common.BusinessException;
 import com.health.common.PageResult;
 import com.health.entity.AiAnalysisLog;
 import com.health.entity.FoodRecord;
@@ -13,6 +14,9 @@ import com.health.service.AiNutritionService;
 import com.health.vo.AiAnalyzeDietVO;
 import com.health.vo.AiAnalyzeManualVO;
 import com.health.vo.NutritionSummaryVO;
+import com.health.utils.NutritionCalculator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -34,6 +38,8 @@ import java.util.*;
  */
 @Service
 public class AiNutritionServiceImpl implements AiNutritionService {
+
+    private static final Logger log = LoggerFactory.getLogger(AiNutritionServiceImpl.class);
 
     /** 模拟食物营养数据库 */
     private static final Map<String, MockNutrition> MOCK_DATA = Map.of(
@@ -91,6 +97,12 @@ public class AiNutritionServiceImpl implements AiNutritionService {
 
     @Value("${deepseek.url:https://api.deepseek.com/chat/completions}")
     private String apiUrl;
+
+    @Value("${deepseek.max-tokens:2000}")
+    private int maxTokens;
+
+    @Value("${deepseek.temperature:0.7}")
+    private double temperature;
 
     /** 是否使用真实 API */
     private boolean useRealApi() {
@@ -151,7 +163,11 @@ public class AiNutritionServiceImpl implements AiNutritionService {
                 "用户输入：" + foodName + "\n" +
                 "返回严格的JSON格式（不要markdown代码块）：\n" +
                 "{\"isFood\": true, \"foodName\": \"补全后的食物名称\", \"calories\": 数值, \"protein\": 数值, \"carbs\": 数值, \"fat\": 数值, " +
-                "\"weight\": \"估算份量\", \"advice\": \"结合用户健康目标给出接地气的饮食建议（约50个汉字），推荐贴近中国人日常饮食习惯的搭配方式\", " +
+                "\"weight\": \"估算份量\", \"advice\": \"结合用户健康目标给出接地气的饮食建议（约50个字）。" +
+                (user != null && user.getAge() != null && user.getAge() >= 18 && user.getAge() <= 25
+                    ? "该用户为在校大学生，建议优先推荐学校食堂常见菜品（如自选菜窗口的番茄炒蛋、青椒肉丝、炒时蔬等，套餐饭，面食窗口，麻辣烫自选等），避免推荐昂贵食材或食堂难以买到的食物。"
+                    : "推荐贴近中国人日常饮食习惯的搭配方式。") +
+                "\", " +
                 "\"details\": [{\"name\": \"微量元素名\", \"val\": \"数值\", \"unit\": \"单位\"}]}";
 
         Map<String, Object> result = callDeepSeek(prompt, apiModel);
@@ -180,7 +196,7 @@ public class AiNutritionServiceImpl implements AiNutritionService {
      */
     private AiAnalyzeDietVO analyzeDietWithApi(Long userId, LocalDate date, String apiModel) {
         List<FoodRecord> records = foodRecordMapper.getRecordsByDate(userId, date);
-        NutritionSummaryVO summary = calculateSummary(records);
+        NutritionSummaryVO summary = NutritionCalculator.calculateSummary(records);
         User user = userMapper.selectById(userId);
         String userContext = buildUserContext(user);
 
@@ -231,6 +247,9 @@ public class AiNutritionServiceImpl implements AiNutritionService {
                 + "g，碳水" + summary.getTotalCarbs() + "g，脂肪" + summary.getTotalFat() + "g。" +
                 "请用贴近中国人日常饮食的方式进行评价和建议，多推荐家常菜、中式食材（如豆腐、鸡蛋、青菜、鱼、瘦肉、杂粮饭、粥、面条等），" +
                 "而非西式健身餐（鸡胸肉沙拉、蛋白粉等）。" +
+                (user != null && user.getAge() != null && user.getAge() >= 18 && user.getAge() <= 25
+                    ? "该用户为在校大学生，日常依赖学校食堂。建议中优先提及食堂常见窗口（自选菜、套餐饭、面食、麻辣烫等），推荐食堂容易买到的具体菜品组合，考虑学生经济能力，避免推荐昂贵或食堂买不到的食物。"
+                    : "") +
                 (missingMeals.isEmpty() && !presentMeals.isEmpty()
                         ? "请评价今日整体饮食质量，返回严格的JSON格式（不要markdown代码块）：\n"
                         : "请先评价已记录餐次的营养质量，然后对尚未记录的餐次给出具体的饮食建议，帮助用户合理搭配。返回严格的JSON格式（不要markdown代码块）：\n") +
@@ -255,38 +274,43 @@ public class AiNutritionServiceImpl implements AiNutritionService {
         requestBody.put("messages", List.of(
                 Map.of("role", "user", "content", prompt)
         ));
-        requestBody.put("max_tokens", 2000);
+        requestBody.put("max_tokens", maxTokens);
+        requestBody.put("temperature", temperature);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
         ResponseEntity<Map> response;
         try {
             response = restTemplate.postForEntity(apiUrl, request, Map.class);
         } catch (Exception e) {
-            throw new RuntimeException("DeepSeek API 调用失败: " + e.getMessage());
+            log.error("DeepSeek API 调用失败", e);
+            throw new RuntimeException("AI 服务暂不可用，请稍后重试");
         }
 
         Map<String, Object> body = response.getBody();
         if (body == null) {
-            throw new RuntimeException("DeepSeek API 返回为空");
+            log.error("DeepSeek API 返回为空");
+            throw new RuntimeException("AI 服务暂不可用，请稍后重试");
         }
-        // 检查 API 错误（如 API Key 无效）
         if (body.containsKey("error")) {
-            Object err = body.get("error");
-            throw new RuntimeException("DeepSeek API 错误: " + err);
+            log.error("DeepSeek API 返回错误: {}", body.get("error"));
+            throw new RuntimeException("AI 服务暂不可用，请稍后重试");
         }
         if (!body.containsKey("choices")) {
-            throw new RuntimeException("DeepSeek API 返回异常: " + body);
+            log.error("DeepSeek API 返回缺少 choices 字段");
+            throw new RuntimeException("AI 服务暂不可用，请稍后重试");
         }
 
         List<Map<String, Object>> choices = (List<Map<String, Object>>) body.get("choices");
         if (choices.isEmpty()) {
-            throw new RuntimeException("DeepSeek API 返回空结果");
+            log.error("DeepSeek API 返回空 choices");
+            throw new RuntimeException("AI 服务暂不可用，请稍后重试");
         }
 
         Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
         String content = (String) message.get("content");
         if (content == null || content.isEmpty()) {
-            throw new RuntimeException("DeepSeek 返回内容为空");
+            log.error("DeepSeek 返回内容为空");
+            throw new RuntimeException("AI 服务暂不可用，请稍后重试");
         }
 
         // 提取 JSON（去掉可能的 markdown 代码块包裹）
@@ -304,7 +328,8 @@ public class AiNutritionServiceImpl implements AiNutritionService {
         try {
             return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
-            throw new RuntimeException("解析 DeepSeek 响应失败，原始内容: " + content.substring(0, Math.min(200, content.length())));
+            log.error("解析 DeepSeek 响应失败，原始内容前200字符: {}", content.substring(0, Math.min(200, content.length())));
+            throw new RuntimeException("AI 服务暂不可用，请稍后重试");
         }
     }
 
@@ -378,7 +403,7 @@ public class AiNutritionServiceImpl implements AiNutritionService {
 
     private AiAnalyzeDietVO analyzeDietWithMock(Long userId, LocalDate date) {
         List<FoodRecord> records = foodRecordMapper.getRecordsByDate(userId, date);
-        NutritionSummaryVO summary = calculateSummary(records);
+        NutritionSummaryVO summary = NutritionCalculator.calculateSummary(records);
 
         // 检查缺失餐次
         Set<String> presentMeals = new java.util.HashSet<>();
@@ -467,8 +492,8 @@ public class AiNutritionServiceImpl implements AiNutritionService {
     @Override
     public void deleteById(Long userId, Long id) {
         AiAnalysisLog log = aiAnalysisLogMapper.selectById(id);
-        if (log == null) throw new RuntimeException("分析记录不存在");
-        if (!log.getUserId().equals(userId)) throw new RuntimeException("无权删除他人的分析记录");
+        if (log == null) throw new BusinessException(404, "分析记录不存在");
+        if (!log.getUserId().equals(userId)) throw new BusinessException(403, "无权删除他人的分析记录");
         aiAnalysisLogMapper.deleteById(id);
     }
 
@@ -510,6 +535,10 @@ public class AiNutritionServiceImpl implements AiNutritionService {
             sb.append("性别为").append(user.getGender() == 1 ? "男" : "女").append("，");
         }
         if (sb.length() == 0) return "";
+        // 学生年龄段的食堂场景提示
+        if (user.getAge() != null && user.getAge() >= 18 && user.getAge() <= 25) {
+            sb.append("该用户为在校大学生，日常饮食主要依赖学校食堂。");
+        }
         return sb.append("请根据用户年龄阶段和身体状况给出个性化饮食建议。").toString();
     }
 
@@ -525,6 +554,9 @@ public class AiNutritionServiceImpl implements AiNutritionService {
         String context = buildUserContext(user);
         String prompt = "你是一个熟悉中国人饮食习惯的专业营养师。根据以下用户信息，用1-2句话给出接地气的个性化饮食建议。" + context
                 + "建议要贴近中国人日常饮食，推荐家常菜和中式食材（如豆腐、鸡蛋、绿叶菜、清蒸鱼、杂粮粥等），避免西式健身餐建议。" +
+                (user.getAge() != null && user.getAge() >= 18 && user.getAge() <= 25
+                    ? "该用户为在校大学生，建议基于学校食堂能买到的食物来推荐，考虑学生预算有限。"
+                    : "") +
                 "返回严格的JSON格式（不要markdown代码块）：\n{\"tip\": \"你的个性化建议\"}";
 
         Map<String, Object> result = callDeepSeek(prompt, defaultModel.isEmpty() ? "deepseek-chat" : defaultModel);
@@ -556,22 +588,6 @@ public class AiNutritionServiceImpl implements AiNutritionService {
 
         String key = ageGroup + "_" + goal;
         return tips.getOrDefault(key, genderStr + "建议均衡饮食，" + goalCN + "期间注意营养搭配，保持适量运动，定期关注健康指标变化。");
-    }
-
-    private NutritionSummaryVO calculateSummary(List<FoodRecord> records) {
-        double totalCal = 0, totalProtein = 0, totalCarbs = 0, totalFat = 0;
-        for (FoodRecord r : records) {
-            totalCal += Optional.ofNullable(r.getCalories()).orElse(0.0);
-            totalProtein += Optional.ofNullable(r.getProtein()).orElse(0.0);
-            totalCarbs += Optional.ofNullable(r.getCarbs()).orElse(0.0);
-            totalFat += Optional.ofNullable(r.getFat()).orElse(0.0);
-        }
-        NutritionSummaryVO summary = new NutritionSummaryVO();
-        summary.setTotalCal(totalCal);
-        summary.setTotalProtein(totalProtein);
-        summary.setTotalCarbs(totalCarbs);
-        summary.setTotalFat(totalFat);
-        return summary;
     }
 
     private AiAnalysisLog saveManualLog(Long userId, String foodName,

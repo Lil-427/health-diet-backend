@@ -2,6 +2,7 @@ package com.health.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.health.common.BusinessException;
 import com.health.dto.FoodRecordDTO;
 import com.health.entity.FoodRecord;
 import com.health.mapper.FoodRecordMapper;
@@ -90,10 +91,10 @@ public class FoodRecordServiceImpl extends ServiceImpl<FoodRecordMapper, FoodRec
     public void updateRecord(Long id, Long userId, FoodRecordDTO dto) {
         FoodRecord record = baseMapper.selectById(id);
         if (record == null) {
-            throw new RuntimeException("饮食记录不存在");
+            throw new BusinessException(404, "饮食记录不存在");
         }
         if (!record.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作他人的饮食记录");
+            throw new BusinessException(403, "无权操作他人的饮食记录");
         }
 
         record.setFoodName(dto.getFoodName());
@@ -112,10 +113,10 @@ public class FoodRecordServiceImpl extends ServiceImpl<FoodRecordMapper, FoodRec
     public void deleteRecord(Long id, Long userId) {
         FoodRecord record = baseMapper.selectById(id);
         if (record == null) {
-            throw new RuntimeException("饮食记录不存在");
+            throw new BusinessException(404, "饮食记录不存在");
         }
         if (!record.getUserId().equals(userId)) {
-            throw new RuntimeException("无权删除他人的饮食记录");
+            throw new BusinessException(403, "无权删除他人的饮食记录");
         }
 
         baseMapper.deleteById(id);

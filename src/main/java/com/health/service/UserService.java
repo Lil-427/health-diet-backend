@@ -40,4 +40,19 @@ public interface UserService extends IService<User> {
      * Base64 方式上传头像
      */
     String uploadAvatarBase64(Long userId, String base64, String filename);
+
+    /**
+     * 根据用户名查找用户
+     */
+    User findByUsername(String username);
+
+    /**
+     * 检查用户名是否已存在
+     */
+    boolean existsByUsername(String username);
+
+    /**
+     * 注销账号（物理删除用户及其关联数据）
+     */
+    void deleteAccount(Long userId);
 }

@@ -20,11 +20,20 @@ public interface StatsService {
     CalorieTrendVO getCalorieTrend(Long userId, int range);
 
     /**
-     * 获取营养素热量占比
+     * 获取营养素热量占比（指定日期）
      *
      * @param userId 用户 ID
      * @param date   查询日期（不传默认为今天）
      * @return 营养素占比数据
      */
     NutrientRatioVO getNutrientRatio(Long userId, LocalDate date);
+
+    /**
+     * 获取营养素热量占比（一段时间范围聚合）
+     *
+     * @param userId 用户 ID
+     * @param range  天数范围（7/30/90）
+     * @return 营养素占比数据
+     */
+    NutrientRatioVO getNutrientRatio(Long userId, int range);
 }
