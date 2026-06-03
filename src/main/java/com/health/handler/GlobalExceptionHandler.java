@@ -48,7 +48,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public Result<Void> handleBadCredentialsException(BadCredentialsException e) {
-        return Result.unauthorized("用户名或密码错误");
+        return Result.unauthorized(e.getMessage());
     }
 
     /**
